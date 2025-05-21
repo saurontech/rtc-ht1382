@@ -22,6 +22,7 @@ struct ht1382_regs {
 	uint8_t		day;
 	uint8_t		year;
 };
+#define HT1382_MAX_WRITE_LEN	(sizeof(struct ht1382_regs) + 1)
 
 static struct i2c_driver ht1382_driver;
 
@@ -51,9 +52,9 @@ static int ht1382_read(struct device *dev, void *data, uint8_t off, uint8_t len)
 static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
-	static uint8_t buffer[64 * 1024];//max length for i2c_master_send
+	static uint8_t buffer[HT1382_MAX_WRITE_LEN];
 
-	if((len + 1) >= (64 * 1024)){
+	if((len + 1) > HT1382_MAX_WRITE_LEN){
 		return -EIO;
 	}
 
@@ -66,6 +67,23 @@ static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len
 
 	return -EIO;
 }
+
+static int ht1382_WP_on(struct device *dev)
+{
+	uint8_t reg;
+
+	reg = 0x80;
+	return ht1382_write(dev, &reg, HT1382_ST1, 1);
+}
+
+static int ht1382_WP_off(struct device *dev)
+{
+	uint8_t reg;
+
+	reg = 0x00;
+	return ht1382_write(dev, &reg, HT1382_ST1, 1);
+}
+
 
 static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
@@ -106,12 +124,9 @@ static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
 	struct ht1382_regs regs;
-	uint8_t reg;
 	int error;
 
-	/* WP off */
-	reg = 0;
-	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
+	error = ht1382_WP_off(dev);
 	if (error)
 		return error;
 
@@ -127,9 +142,7 @@ static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	if (error)
 		return error;
 
-	/* WP on */
-	reg = 0x80;
-	return ht1382_write(dev, &reg, HT1382_ST1, 1);
+	return ht1382_WP_on(dev);
 }
 
 static const struct rtc_class_ops ht1382_rtc_ops = {
@@ -147,12 +160,20 @@ static int ht1382_probe(struct i2c_client *client)
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
+	ht1382_WP_off(dev);
+
+
 	error = ht1382_read(dev, &reg, HT1382_SECONDS, 1);
 	if (!error && (reg & HT1382_STOP)) {
+		
 		dev_warn(dev, "Oscillator was halted. Restarting...\n");
 		reg &= ~HT1382_STOP;
 		error = ht1382_write(dev, &reg, HT1382_SECONDS, 1);
+
 	}
+
+	ht1382_WP_on(dev);
+
 	if (error)
 		return error;
 
@@ -182,6 +203,7 @@ static struct i2c_driver ht1382_driver = {
 	.driver = {
 		.name	= "ht1382",
 		.owner	= THIS_MODULE,
+		.of_match_table = ht1382_of_match,  
 	},
 	.probe		= ht1382_probe,
 	.id_table	= ht1382_id,
