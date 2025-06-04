@@ -18,7 +18,7 @@ ifneq ($(KERNELRELEASE),)
 
 rtc_ht1382-objs := rtc-ht1382.o
 
-obj-m	:= rtc_ht1382.o
+obj-m	:= rtc-ht1382.o
 
 else
 
@@ -32,9 +32,6 @@ endif
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.symvers *.order *.a *.mod *.dwo
-	find ./legacy -name '*.o' -exec rm {} \;
-	find ./legacy -name '*.dwo' -exec rm {} \;
-	find ./legacy -name '*.cmd' -exec rm {} \;
 
 depend .depend dep:
 	$(CC) -M *.c > .depend
