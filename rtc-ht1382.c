@@ -22,11 +22,11 @@ struct ht1382_regs {
 	uint8_t		day;
 	uint8_t		year;
 };
-#define HT1382_MAX_WRITE_LEN	(sizeof(struct ht1382_regs) + 1)
+#define HT1382_MAX_WRITE_LEN	0x15
 
 static struct i2c_driver ht1382_driver;
 
-static int ht1382_read(struct device *dev, void *data, uint8_t off, uint8_t len)
+static int ht1382_read(struct device *dev, uint8_t offset, void *data, uint8_t len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct i2c_msg msgs[] = {
@@ -34,7 +34,7 @@ static int ht1382_read(struct device *dev, void *data, uint8_t off, uint8_t len)
 			.addr = client->addr,
 			.flags = 0,
 			.len = 1,
-			.buf = &off,
+			.buf = &offset,
 		}, {
 			.addr = client->addr,
 			.flags = I2C_M_RD,
@@ -49,7 +49,7 @@ static int ht1382_read(struct device *dev, void *data, uint8_t off, uint8_t len)
 	return -EIO;
 }
 
-static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len)
+static int ht1382_write(struct device *dev, uint8_t offset, void *data, uint8_t len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	static uint8_t buffer[HT1382_MAX_WRITE_LEN];
@@ -58,7 +58,7 @@ static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len
 		return -EIO;
 	}
 
-	buffer[0] = off;
+	buffer[0] = offset;
 	memcpy(&buffer[1], data, len);
 
 	if (i2c_master_send(client, buffer, len + 1) == (len + 1)){
@@ -68,20 +68,20 @@ static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len
 	return -EIO;
 }
 
-static int ht1382_WP_on(struct device *dev)
+static int ht1382_wp_on(struct device *dev)
 {
 	uint8_t reg;
 
-	reg = 0x80;
-	return ht1382_write(dev, &reg, HT1382_ST1, 1);
+	reg = HT1382_WP;
+	return ht1382_write(dev, HT1382_ST1, &reg, sizeof(reg));
 }
 
-static int ht1382_WP_off(struct device *dev)
+static int ht1382_wp_off(struct device *dev)
 {
 	uint8_t reg;
 
 	reg = 0x00;
-	return ht1382_write(dev, &reg, HT1382_ST1, 1);
+	return ht1382_write(dev, HT1382_ST1, &reg, sizeof(reg));
 }
 
 
@@ -90,7 +90,7 @@ static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	struct ht1382_regs regs;
 	int error;
 
-	error = ht1382_read(dev, &regs, 0, sizeof(regs));
+	error = ht1382_read(dev, 0, &regs, sizeof(regs));
 	if (error)
 		return error;
 
@@ -106,7 +106,7 @@ static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	tm->tm_min = bcd2bin(regs.minute & 0x7f);
         if (regs.hour & HT1382_HOUR_1224) {
                 tm->tm_hour = bcd2bin(regs.hour & 0x1f);
-                if (regs.hour & HT1382_HOUR_AMPM) tm->tm_hour += 12;
+                if (regs.hour & HT1382_HOUR_AMPM) tm->tm_hour += 20;
         } else {
                 tm->tm_hour = bcd2bin(regs.hour & 0x3f);
 	}
@@ -126,7 +126,7 @@ static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	struct ht1382_regs regs;
 	int error;
 
-	error = ht1382_WP_off(dev);
+	error = ht1382_wp_off(dev);
 	if (error)
 		return error;
 
@@ -138,11 +138,11 @@ static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	regs.month = bin2bcd(tm->tm_mon + 1);
 	regs.year = bin2bcd(tm->tm_year % 100);
 
-	error = ht1382_write(dev, &regs, 0, sizeof(regs));
+	error = ht1382_write(dev, 0, &regs, sizeof(regs));
 	if (error)
 		return error;
 
-	return ht1382_WP_on(dev);
+	return ht1382_wp_on(dev);
 }
 
 static const struct rtc_class_ops ht1382_rtc_ops = {
@@ -160,19 +160,17 @@ static int ht1382_probe(struct i2c_client *client)
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
-	ht1382_WP_off(dev);
 
 
-	error = ht1382_read(dev, &reg, HT1382_SECONDS, 1);
+	error = ht1382_read(dev, HT1382_SECONDS, &reg, sizeof(reg));
 	if (!error && (reg & HT1382_STOP)) {
 		
 		dev_warn(dev, "Oscillator was halted. Restarting...\n");
 		reg &= ~HT1382_STOP;
-		error = ht1382_write(dev, &reg, HT1382_SECONDS, 1);
-
+		ht1382_wp_off(dev);
+		error = ht1382_write(dev, HT1382_SECONDS, &reg, sizeof(reg));
+		ht1382_wp_on(dev);
 	}
-
-	ht1382_WP_on(dev);
 
 	if (error)
 		return error;
