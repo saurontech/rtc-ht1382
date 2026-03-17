@@ -139,8 +139,10 @@ static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	regs.year = bin2bcd(tm->tm_year % 100);
 
 	error = ht1382_write(dev, 0, &regs, sizeof(regs));
-	if (error)
+	if (error){
+		ht1382_wp_on(dev);
 		return error;
+	}
 
 	return ht1382_wp_on(dev);
 }
