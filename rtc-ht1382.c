@@ -13,20 +13,21 @@
 #define HT1382_ST1		0x07	/* Status register address */
 #define HT1382_WP		0x80	/* Write Protect flag */
 
-struct ht1382_regs {
-	uint8_t		second;
-	uint8_t		minute;
-	uint8_t		hour;
-	uint8_t		date;
-	uint8_t		month;
-	uint8_t		day;
-	uint8_t		year;
-};
 #define HT1382_MAX_WRITE_LEN	0x15
+
+struct ht1382_regs {
+	u8		second;
+	u8		minute;
+	u8		hour;
+	u8		date;
+	u8		month;
+	u8		day;
+	u8		year;
+};
 
 static struct i2c_driver ht1382_driver;
 
-static int ht1382_read(struct device *dev, uint8_t offset, void *data, uint8_t len)
+static int ht1382_read(struct device *dev, u8 offset, void *data, u8 len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct i2c_msg msgs[] = {
@@ -49,28 +50,26 @@ static int ht1382_read(struct device *dev, uint8_t offset, void *data, uint8_t l
 	return -EIO;
 }
 
-static int ht1382_write(struct device *dev, uint8_t offset, void *data, uint8_t len)
+static int ht1382_write(struct device *dev, u8 offset, void *data, u8 len)
 {
 	struct i2c_client *client = to_i2c_client(dev);
-	static uint8_t buffer[HT1382_MAX_WRITE_LEN];
+	static u8 buffer[HT1382_MAX_WRITE_LEN];
 
-	if((len + 1) > HT1382_MAX_WRITE_LEN){
+	if ((len + 1) > HT1382_MAX_WRITE_LEN)
 		return -EIO;
-	}
 
 	buffer[0] = offset;
 	memcpy(&buffer[1], data, len);
 
-	if (i2c_master_send(client, buffer, len + 1) == (len + 1)){
+	if (i2c_master_send(client, buffer, len + 1) == (len + 1))
 		return 0;
-	}
 
 	return -EIO;
 }
 
 static int ht1382_wp_on(struct device *dev)
 {
-	uint8_t reg;
+	u8 reg;
 
 	reg = HT1382_WP;
 	return ht1382_write(dev, HT1382_ST1, &reg, sizeof(reg));
@@ -78,12 +77,11 @@ static int ht1382_wp_on(struct device *dev)
 
 static int ht1382_wp_off(struct device *dev)
 {
-	uint8_t reg;
+	u8 reg;
 
 	reg = 0x00;
 	return ht1382_write(dev, HT1382_ST1, &reg, sizeof(reg));
 }
-
 
 static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
@@ -95,29 +93,32 @@ static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		return error;
 
 	dev_dbg(dev,
-		"%s: raw data is sec=%02x, min=%02x, hour=%02x, "
-		"date=%02x, day=%02x, mon=%02x, "
-		"year=%02x\n",
+		"%s: raw data is sec=%02x, min=%02x, hour=%02x, date=%02x, day=%02x, mon=%02x, year=%02x\n",
 		__func__,
-		regs.second,regs.minute,regs.hour,
-		regs.date,regs.day,regs.month,regs.year);
+		regs.second, regs.minute, regs.hour,
+		regs.date, regs.day, regs.month, regs.year);
 
 	tm->tm_sec = bcd2bin(regs.second & 0x7f);
 	tm->tm_min = bcd2bin(regs.minute & 0x7f);
-        if (regs.hour & HT1382_HOUR_1224) {
-                tm->tm_hour = bcd2bin(regs.hour & 0x1f);
-                if (regs.hour & HT1382_HOUR_AMPM) tm->tm_hour += 20;
-        } else {
-                tm->tm_hour = bcd2bin(regs.hour & 0x3f);
+
+	if (regs.hour & HT1382_HOUR_1224) {
+		tm->tm_hour = bcd2bin(regs.hour & 0x1f);
+		if (regs.hour & HT1382_HOUR_AMPM)
+			tm->tm_hour += 20;
+	} else {
+		tm->tm_hour = bcd2bin(regs.hour & 0x3f);
 	}
+
 	tm->tm_mday = bcd2bin(regs.date);
 	tm->tm_wday = bcd2bin(regs.day) - 1;
 	tm->tm_mon = bcd2bin(regs.month) - 1;
 	tm->tm_year = bcd2bin(regs.year) + 100;
+
 	if (rtc_valid_tm(tm)) {
-		dev_err(dev, "retrieved date/time is not valid.\n");		
+		dev_err(dev, "retrieved date/time is not valid.\n");
 		return -EINVAL;
 	}
+
 	return 0;
 }
 
@@ -139,7 +140,7 @@ static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	regs.year = bin2bcd(tm->tm_year % 100);
 
 	error = ht1382_write(dev, 0, &regs, sizeof(regs));
-	if (error){
+	if (error) {
 		ht1382_wp_on(dev);
 		return error;
 	}
@@ -156,17 +157,14 @@ static int ht1382_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct rtc_device *rtc;
-	uint8_t reg;
+	u8 reg;
 	int error;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
-
-
 	error = ht1382_read(dev, HT1382_SECONDS, &reg, sizeof(reg));
 	if (!error && (reg & HT1382_STOP)) {
-		
 		dev_warn(dev, "Oscillator was halted. Restarting...\n");
 		reg &= ~HT1382_STOP;
 		ht1382_wp_off(dev);
@@ -177,8 +175,9 @@ static int ht1382_probe(struct i2c_client *client)
 	if (error)
 		return error;
 
-	rtc = devm_rtc_device_register(&client->dev, ht1382_driver.driver.name,
-						&ht1382_rtc_ops, THIS_MODULE);
+	rtc = devm_rtc_device_register(&client->dev,
+				       ht1382_driver.driver.name,
+				       &ht1382_rtc_ops, THIS_MODULE);
 	if (IS_ERR(rtc))
 		return PTR_ERR(rtc);
 
@@ -194,8 +193,8 @@ static const struct i2c_device_id ht1382_id[] = {
 MODULE_DEVICE_TABLE(i2c, ht1382_id);
 
 static const struct of_device_id ht1382_of_match[] = {
-        { .compatible = "htk,ht1382" },
-        {}
+	{ .compatible = "htk,ht1382" },
+	{}
 };
 MODULE_DEVICE_TABLE(of, ht1382_of_match);
 
@@ -203,7 +202,7 @@ static struct i2c_driver ht1382_driver = {
 	.driver = {
 		.name	= "ht1382",
 		.owner	= THIS_MODULE,
-		.of_match_table = ht1382_of_match,  
+		.of_match_table = ht1382_of_match,
 	},
 	.probe		= ht1382_probe,
 	.id_table	= ht1382_id,
